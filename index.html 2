@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>VeriPOS IA — DEMO</title>
+  <style>
+    :root{--bg:#000;--fg:#fff;--muted:#9aa3aa;--card:#0f1115;--line:#1e2430;--blue:#0078A8}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}
+    header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+    .logo{font-weight:700} .tag{color:var(--muted);font-size:.9rem}
+    .wrap{padding:16px}
+    .panel{max-width:420px;margin:32px auto;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+    h1,h2,h3{margin:.2rem 0 1rem}
+    input,button{width:100%;border-radius:10px;padding:12px}
+    input{background:#0a0d13;border:1px solid var(--line);color:#fff}
+    button{border:none;background:var(--blue);color:#fff;cursor:pointer}
+    button.secondary{background:#2a2f3a}
+    .muted{color:var(--muted)}
+    .pos{display:flex;gap:16px}
+    .left{flex:1}
+    .right{width:360px}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:left;cursor:pointer}
+    .card b{display:block;margin-bottom:6px}
+    .ticket{position:sticky;top:16px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+    .row{display:flex;justify-content:space-between;margin:.35rem 0}
+    .total{font-weight:700;font-size:1.1rem}
+    @media print{
+      header,.controls,.no-print{display:none!important}
+      body{background:#fff;color:#000}
+      .ticket{border:none}
+    }
+  </style>
+  <!-- QR por CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+  <header>
+    <div class="logo">VeriPOS IA</div>
+    <div class="tag">DEMO limpia</div>
+  </header>
+
+  <!-- Vista 1: Inicio de turno -->
+  <section id="view-turno" class="wrap">
+    <div class="panel">
+      <h2>👋 Bienvenido, equipo VeriPOS IA</h2>
+      <p class="muted">Escribe tu nombre para que salga en el ticket.</p>
+      <input id="nombre" placeholder="Ej. Laura" />
+      <button class="no-print" style="margin-top:10px" onclick="startTurn()">Comenzar turno</button>
+    </div>
+  </section>
+
+  <!-- Vista 2: TPV -->
+  <section id="view-pos" class="wrap" style="display:none">
+    <div class="controls no-print" style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+      <span class="muted">IGIC 7 %</span>
+      <input id="buscar" placeholder="Buscar producto…" style="max-width:280px" oninput="pintarProductos()" />
+    </div>
+    <div class="pos">
+      <div class="left">
+        <div id="grid" class="grid"></div>
+      </div>
+      <div class="right">
+        <div class="ticket" id="ticket">
+          <h3 style="margin:6px 0">VeriPOS IA</h3>
+          <div class="muted" id="camareroTxt">Atendido por: —</div>
+          <hr style="border-color:#222">
+          <div id="lineas"></div>
+          <hr style="border-color:#222">
+          <div class="row"><span>Subtotal</span><span id="subtotal">0,00 €</span></div>
+          <div class="row"><span>IGIC (7%)</span><span id="igic">0,00 €</span></div>
+          <div class="row total"><span>Total</span><span id="total">0,00 €</span></div>
+          <button class="no-print" id="btnCobrar" style="margin-top:10px" onclick="emitir()">Cobrar / Emitir ticket Veri*Factu</button>
+          <button class="secondary no-print" id="btnImprimir" style="margin-top:8px;display:none" onclick="window.print()">Imprimir ticket</button>
+          <div id="qrBox" class="no-print" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    // ===== Estado =====
+    const IGIC = 0.07;
+    const productosBase = [
+      {id:"1", name:"Smash Burger",    price:9.90},
+      {id:"2", name:"Cheeseburger",    price:8.90},
+      {id:"3", name:"Papas fritas",    price:3.50},
+      {id:"4", name:"Refresco lata",   price:2.00},
+      {id:"5", name:"Agua",            price:1.50}
+    ];
+    const V = { camarero:null, carrito:[], productos:[...productosBase] };
+
+    // ===== Utilidades =====
+    const € = n => (Number(n).toFixed(2).replace(".",",")) + " €";
+    const byId = id => document.getElementById(id);
+
+    // ===== Flujo =====
+    function startTurn(){
+      const n = byId("nombre").value.trim();
+      if(!n){ alert("Escribe tu nombre"); return; }
+      V.camarero = n;
+      byId("camareroTxt").textContent = "Atendido por: " + n;
+      byId("view-turno").style.display = "none";
+      byId("view-pos").style.display   = "block";
+      pintarProductos();
+    }
+
+    function pintarProductos(){
+      const q = (byId("buscar").value||"").toLowerCase();
+      const cont = byId("grid"); cont.innerHTML = "";
+      V.productos
+        .filter(p => p.name.toLowerCase().includes(q))
+        .forEach(p=>{
+          const b = document.createElement("button");
+          b.className = "card";
+          b.innerHTML = `<b>${p.name}</b><div class="muted">${€(p.price)}</div>`;
+          b.onclick = ()=>{ V.carrito.push(p); renderTicket(); };
+          cont.appendChild(b);
+        });
+    }
+
+    function renderTicket(){
+      const cont = byId("lineas"); cont.innerHTML = "";
+      let subtotal = 0;
+      V.carrito.forEach(p=>{
+        subtotal += p.price;
+        const row = document.createElement("div");
+        row.className = "row";
+        row.innerHTML = `<span>${p.name}</span><span>${€(p.price)}</span>`;
+        cont.appendChild(row);
+      });
+      const igic  = subtotal * IGIC;
+      const total = subtotal + igic;
+      byId("subtotal").textContent = €(subtotal);
+      byId("igic").textContent     = €(igic);
+      byId("total").textContent    = €(total);
+    }
+
+    async function emitir(){
+      if(!V.carrito.length){ alert("Añade productos al ticket"); return; }
+      const payload = {
+        fecha: new Date().toLocaleString(),
+        camarero: V.camarero,
+        total: byId("total").textContent
+      };
+      const box = byId("qrBox"); box.innerHTML = "";
+      await QRCode.toCanvas(JSON.stringify(payload), { width: 160 }, (err, canvas)=>{
+        if(err){ alert("No se pudo generar el QR"); return; }
+        box.appendChild(canvas);
+      });
+      byId("btnImprimir").style.display = "block";
+      alert("Ticket listo. QR Veri*Factu (simulado) generado.");
+    }
+
+    console.log("✅ VeriPOS IA DEMO cargada");
+  </script>
+</body>
+</html>
