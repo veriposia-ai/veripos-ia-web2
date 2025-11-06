@@ -129,7 +129,10 @@
     <h3 style="margin:6px 0 10px">👋 Bienvenido, equipo VeriPOS IA</h3>
     <p class="muted" style="margin-top:0">Escribe tu nombre para que salga en el ticket.</p>
     <input id="nombre" class="in" placeholder="Ej. Laura">
-    <button id="btnTurno" class="btn" style="margin-top:12px">Comenzar turno</button>
+    <<button id="btnTurno" class="btn" style="margin-top:12px"
+onclick="(function(){var n=document.getElementById('nombre').value.trim();if(!n){alert('Escribe tu nombre');return;}document.querySelector('#atendido').textContent='Atendido por: '+n;document.getElementById('modal').style.display='none';})()">
+  Comenzar turno
+</button>
   </div>
 </div>
 
